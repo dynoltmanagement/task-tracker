@@ -580,7 +580,7 @@ function viewTeam() {
   const T = team().filter(p => !teamSel || pTeams(p).includes(teamSel));
   let h = `<div class="card" style="margin-bottom:16px"><h2 id="pform-t">Add a team member</h2><div class="fgrid">
     <label class="f">Name<input id="p-name" placeholder="e.g. John Doe"></label>
-    <label class="f">Email (optional, for emailing tasks)<input id="p-email" type="email" placeholder="name@company.com"></label>
+    <label class="f">Email (optional, for emailing tasks)<input id="p-email" type="email" placeholder="name@dynolt.com"></label>
     <div class="f w"><span>Teams</span><div class="teamchk" id="p-teams">${TT.map(x => `<label class="chk"><input type="checkbox" value="${esc(x)}"${teamSel === x ? " checked" : ""}> ${esc(x)}</label>`).join("")}<input id="p-newteam" placeholder="${TT.length ? "Or type a new team name" : "Team name, e.g. Quality (optional)"}"></div></div>
     <label class="chk w"><input type="checkbox" id="p-shared"> Let this person sign in and see their own tasks (off keeps the tracker fully private)</label></div>
     <div class="row" style="margin-top:12px"><button class="btn pri" data-act="savep">Add</button><button class="btn" data-act="cancelp" hidden>Cancel</button><span class="grow"></span><button class="btn danger" data-act="delp" hidden>Remove</button></div>
@@ -918,7 +918,26 @@ function dupModal(e, inc) {
 
 /* =========================================================== subtasks and forwarding */
 let SPL = null;
+/* Forwarding extras: an optional note and files that go onto every forwarded task */
+let FX = { note: "", files: [] };
+const fxReset = () => { FX = { note: "", files: [] }; };
+function fxHtml() {
+  return `<div class="fx"><label class="f">Note for the person <span class="sub" style="font-weight:400">(optional, added as the first update)</span><textarea id="fx-note" rows="3" placeholder="Context, instructions or what you need back">${esc(FX.note)}</textarea></label>
+    <div class="f"><span>Attachments <span class="sub" style="font-weight:400">(optional, up to 10 MB each)</span></span>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><label class="btn sm">${ic("clip")} Add files<input type="file" id="fx-files" multiple hidden></label>
+    ${FX.files.map((f, i) => `<span class="chip fxf">${esc(f.name)} <button type="button" class="btn ghost icon sm" data-fxrm="${i}" aria-label="Remove ${esc(f.name)}">${ic("x")}</button></span>`).join("")}</div></div></div>`;
+}
+const fxSync = () => { const n = $("#fx-note"); if (n) FX.note = n.value; };
+async function fxApply(taskIds) {
+  fxSync(); const note = FX.note.trim(), files = FX.files; let failed = 0;
+  for (const id of taskIds) {
+    if (note) { try { await api.addNote(id, note); } catch (e) { failed++; } }
+    for (const f of files) { try { await api.upload(me.id, id, f); } catch (e) { failed++; } }
+  }
+  return failed;
+}
 function splitModal(parent, mode) {
+  fxReset();
   const fwdMode = mode === "fwd", T = team();
   if (!T.length) { toast(fwdMode ? "Add your own team on the Team page first, then forward to them" : "Add people on the Team page first"); return; }
   SPL = { parent, mode, rows: fwdMode ? [{ title: parent.title, person_id: "", due: parent.due_date || "" }] : [{ title: "", person_id: "", due: parent.due_date || "" }, { title: "", person_id: "", due: parent.due_date || "" }] };
@@ -930,6 +949,7 @@ function drawSplit() {
     ${fwdMode ? `<p class="sub" style="margin:0 0 10px">Forward the whole task to one person, or add rows to split it into parts for different people. The new tasks go into <b>your</b> tracker, linked to this one. The owner sees how many are done, not your tracker.</p>` : `<p class="sub" style="margin:0 0 10px">Each row becomes a subtask in your tracker, linked to #${parent.no}.</p>`}
     <div class="splits">${rows.map((r, i) => `<div class="splitrow"><input data-sp="title" data-i="${i}" value="${esc(r.title)}" placeholder="${fwdMode && rows.length === 1 ? "Task" : "Part " + (i + 1)}" aria-label="Title"><select data-sp="person_id" data-i="${i}" aria-label="Person">${opt(T.map(p => [p.id, p.name]), r.person_id, "Choose person")}</select><input type="date" data-sp="due" data-i="${i}" value="${esc(r.due)}" aria-label="Due date">${rows.length > 1 ? `<button type="button" class="btn icon ghost" data-sprm="${i}" aria-label="Remove row">${ic("x")}</button>` : ""}</div>`).join("")}</div>
     <button type="button" class="btn" style="margin-top:8px" data-act="spadd">${ic("plus")} ${fwdMode && rows.length === 1 ? "Split into parts" : "Add another part"}</button>
+    ${fxHtml()}
     ${fwdMode && can(parent, "notes") ? `<label class="chk" style="margin-top:12px"><input type="checkbox" id="sp-note" checked> Add an update on the original task saying who it was forwarded to</label>` : ""}`,
     `<button class="btn pri" data-act="spgo">${fwdMode ? (rows.length === 1 ? "Forward" : `Forward as ${rows.length} parts`) : `Create ${pl(rows.length, "subtask")}`}</button>`);
 }
@@ -940,14 +960,16 @@ async function splitGo() {
   if (R.some(r => !r.person_id)) return toast("Choose a person for each part");
   const btn = $('[data-act="spgo"]'); btn.disabled = true;
   try {
-    const made = [];
+    const made = [], newIds = []; fxSync();
     for (const r of R) {
       const whole = fwdMode && R.length === 1;
       const n = await api.insertTask({ title: r.title, person_id: +r.person_id, owner_id: me.id, parent_id: parent.id, status: "Not Started", due_date: r.due || null, due_time: r.due && r.due === parent.due_date ? parent.due_time || null : null, category: parent.category || null, priority: parent.priority || null, checklist: whole ? cl(parent).map(x => ({ text: x.text, done: false })) : [], assignee_can_see: true, assignee_can: DEF_CAN });
-      made.push(`${pName(+r.person_id)}${R.length > 1 ? " (" + r.title + ")" : ""}`);
+      made.push(`${pName(+r.person_id)}${R.length > 1 ? " (" + r.title + ")" : ""}`); if (n && n.id) newIds.push(n.id);
     }
+    const fxN = (FX.note.trim() || FX.files.length) ? await fxApply(newIds) : 0;
+    if (fxN) toast("Forwarded, but some notes or files could not be added. Add them from the task.");
     if (fwdMode && $("#sp-note") && $("#sp-note").checked) { try { await api.addNote(parent.id, `Forwarded by ${me.full_name || me.email} to ${made.join(", ")}`); } catch (e) {} }
-    closeModal(); closePanel(); SPL = null; await reload();
+    closeModal(); closePanel(); SPL = null; fxReset(); await reload();
     toast(fwdMode ? `Forwarded to ${made.join(", ")}. The new ${R.length === 1 ? "task is" : "tasks are"} in your tracker` : `${pl(R.length, "subtask")} created`);
   } catch (e) { toast(errMsg(e)); } finally { if (btn) btn.disabled = false; }
 }
@@ -971,13 +993,13 @@ function bulkForward() {
   if (!S.length) return toast("Select open tasks to forward");
   if (!T.length) return toast("Add your team on the Team page first, then forward to them");
   const shared = S.filter(t => !mine(t)), own = S.filter(mine);
-  BFW = { S, shared, own };
+  BFW = { S, shared, own }; fxReset();
   openModal(`Forward ${pl(S.length, "task")}`, `<div class="fgrid">
     <label class="f">Forward to<select id="bf-person">${opt(T.map(p => [p.id, p.name]), "", "Choose person")}</select></label>
     <label class="f">New due date <span class="sub" style="font-weight:400">(optional)</span><input type="date" id="bf-due"></label></div>
     <div class="note" style="margin-top:12px">${shared.length ? `<div><b>${pl(shared.length, "task")} shared with you</b> will be copied into your tracker for this person, linked to the original. The owner sees progress, not your tracker.</div>` : ""}${own.length ? `<div${shared.length ? ' style="margin-top:6px"' : ""}><b>${pl(own.length, "task")} in your tracker</b> will be reassigned to this person${own.some(t => t.person_id) ? "; you will be asked for a reason" : ""}.</div>` : ""}</div>
     ${shared.some(t => can(t, "notes")) ? `<label class="chk" style="margin-top:10px"><input type="checkbox" id="bf-note" checked> Add an update on each original saying who it was forwarded to</label>` : ""}
-    <p class="sub" style="margin:10px 0 0">Leave the due date empty to keep each task's own due date.</p>`, `<button class="btn pri" data-act="bfgo">Forward ${pl(S.length, "task")}</button>`);
+    <p class="sub" style="margin:10px 0 0">Leave the due date empty to keep each task's own due date.</p>${fxHtml()}`, `<button class="btn pri" data-act="bfgo">Forward ${pl(S.length, "task")}</button>`);
 }
 async function bulkForwardGo() {
   const pid = +$("#bf-person").value, due = $("#bf-due").value, note = $("#bf-note") && $("#bf-note").checked;
@@ -987,20 +1009,22 @@ async function bulkForwardGo() {
   let reason = null;
   if (needR.length) { reason = await askReason(due ? ["assignee", "due date"] : ["assignee"], pl(needR.length, "task")); if (!reason) return; }
   const btn = $('[data-act="bfgo"]'); if (btn) btn.disabled = true;
-  let a = 0, b = 0;
+  let a = 0, b = 0; const touched = []; fxSync();
   try {
     for (const t of shared) {
-      await api.insertTask({ title: t.title, person_id: pid, owner_id: me.id, parent_id: t.id, status: "Not Started", due_date: due || t.due_date || null, due_time: due ? null : t.due_time || null, category: t.category || null, priority: t.priority || null, checklist: cl(t).map(x => ({ text: x.text, done: false })), assignee_can_see: true, assignee_can: DEF_CAN });
+      const nt = await api.insertTask({ title: t.title, person_id: pid, owner_id: me.id, parent_id: t.id, status: "Not Started", due_date: due || t.due_date || null, due_time: due ? null : t.due_time || null, category: t.category || null, priority: t.priority || null, checklist: cl(t).map(x => ({ text: x.text, done: false })), assignee_can_see: true, assignee_can: DEF_CAN });
+      if (nt && nt.id) touched.push(nt.id);
       if (note && can(t, "notes")) { try { await api.addNote(t.id, `Forwarded by ${me.full_name || me.email} to ${who}`); } catch (e) {} }
       a++;
     }
     for (const t of own) {
       let p = { person_id: pid }; if (due) p.due_date = due;
       if (importantChanges(t, p).length) p = withReason(p, reason);
-      await api.updateTask(t.id, p); b++;
+      await api.updateTask(t.id, p); b++; touched.push(t.id);
     }
+    if (FX.note.trim() || FX.files.length) { const f = await fxApply(touched); if (f) toast("Forwarded, but some notes or files could not be added. Add them from the task."); }
   } catch (e) { toast(errMsg(e)); }
-  closeModal(); BFW = null; selected.clear(); await reload();
+  closeModal(); BFW = null; fxReset(); selected.clear(); await reload();
   toast([a ? `${pl(a, "shared task")} forwarded` : "", b ? `${pl(b, "task")} reassigned` : ""].filter(Boolean).join(", ") + ` to ${who}`);
 }
 
@@ -1541,6 +1565,7 @@ document.addEventListener("click", async e => {
   const vw = cl0("[data-view]"); if (vw) { F.view = vw.dataset.view; if (["closed7", "Done", "Dropped"].includes(F.flag) && F.view === "open") F.flag = ""; render(); return; }
   const vb = cl0("[data-val]"); if (vb) { quickValidate(vb.dataset.val); return; }
   const rs = cl0("[data-rset]"); if (rs) { const v = rs.dataset.rset, set = v === "none" ? [] : v === "all" ? RIGHTS.map(r => r[0]) : DEF_CAN; $$("[data-right]").forEach(x => x.checked = set.includes(x.dataset.right)); return; }
+  const fr = cl0("[data-fxrm]"); if (fr) { fxSync(); FX.files.splice(+fr.dataset.fxrm, 1); if (SPL) { syncSplit(); drawSplit(); } else redrawFx(); return; }
   const sr = cl0("[data-sprm]"); if (sr && SPL) { syncSplit(); SPL.rows.splice(+sr.dataset.sprm, 1); drawSplit(); return; }
   const ly = cl0("[data-lay]"); if (ly) { const [k, v] = ly.dataset.lay.split(":"); LAY[k] = v; ls.set("tt-lay-" + k, v); render(); return; }
   const crow = cl0("[data-clrow]"); if (crow) { const id = +crow.dataset.clrow; openCl.has(id) ? openCl.delete(id) : openCl.add(id); render(); return; }
@@ -1635,7 +1660,8 @@ document.addEventListener("click", async e => {
   if (cl0("select,input,label,button,a,textarea")) return;
   const r = cl0(".trow[data-id]"); if (r) openTask(r.dataset.id);
 });
-function syncSplit() { if (!SPL) return; $$("#mb [data-sp]").forEach(el => { SPL.rows[+el.dataset.i][el.dataset.sp] = el.value; }); }
+function redrawFx() { const box = $("#mb .fx"); if (box) box.outerHTML = fxHtml(); }
+function syncSplit() { fxSync(); if (!SPL) return; $$("#mb [data-sp]").forEach(el => { SPL.rows[+el.dataset.i][el.dataset.sp] = el.value; }); }
 function redrawKeep() { const note = $("#e-new")?.value || ""; drawPanel(); $("#e-new").value = note; if (editing.id) { loadHistory(editing); if (mine(editing)) loadFiles(editing); } }
 function addChecklist() { const i = $("#e-clnew"), v = i.value.trim(); if (!v) return; syncDraft(); draft.checklist.push({ text: v, done: false }); redrawKeep(); $("#e-clnew").focus(); }
 document.addEventListener("change", async e => {
@@ -1669,6 +1695,7 @@ document.addEventListener("change", async e => {
   if (t.id === "e-can_see") { $$("[data-right]").forEach(x => x.disabled = !t.checked); const r = $(".rights"); if (r) r.style.opacity = t.checked ? "" : ".5"; return; }
   if (t.dataset.cli !== undefined && draft) { syncDraft(); draft.checklist[+t.dataset.cli].done = t.checked; t.closest(".cli").classList.toggle("done", t.checked); const c = draft.checklist, d = c.filter(x => x.done).length; const pr = $(".prog i"); if (pr) pr.style.width = d / c.length * 100 + "%"; const s = t.closest(".sec").querySelector("h3 .sub"); if (s) s.textContent = `${d} of ${c.length} done`; return; }
   if (t.id === "e-tpl") { const tp = templates.find(x => String(x.id) === t.value); if (tp) { syncDraft(); Object.assign(draft, { title: draft.title || tp.title, category: tp.category, priority: tp.priority, recurrence: tp.recurrence, checklist: (tp.checklist || []).map(x => ({ text: x.text, done: false })) }); drawPanel(); $("#e-tpl").value = t.value; } return; }
+  if (t.id === "fx-files") { const add = [...t.files]; const big = add.find(f => f.size > 10485760); if (big) { t.value = ""; return toast(`${big.name} is over 10 MB`); } fxSync(); FX.files.push(...add); t.value = ""; if (SPL) { syncSplit(); drawSplit(); } else redrawFx(); return; }
   if (t.id === "e-files") { const files = [...t.files]; if (!files.length) return; const big = files.find(f => f.size > 10485760); if (big) return toast(`${big.name} is over 10 MB`); toast(`Uploading ${pl(files.length, "file")}...`); try { for (const f of files) await api.upload(editing.owner_id, editing.id, f); await loadFiles(editing); toast("Uploaded"); } catch (err) { toast(errMsg(err)); } return; }
   if (t.id === "imp-file" && t.files[0]) return impFile(t.files[0]);
   if (t.id === "rst-file" && t.files[0]) return rstFile(t.files[0]);
