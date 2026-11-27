@@ -267,9 +267,10 @@ function render() {
   if (!me) { showLogin(); return; }
   $("#login").hidden = true; $("#app").hidden = false;
   const v = view();
+  document.body.dataset.page = v;
   renderShell();
   const T = tasks.filter(inScope);
-  const titles = { today: [greeting(), nowText()], tasks: ["Tasks", `${T.filter(needsAction).length} open · ${T.filter(t => flag(t) === "Overdue").length} overdue`], calendar: ["Calendar", "Due dates by day"], reports: ["Reports", "How the team is delivering"], team: ["Team", "The people you give tasks to. Names only; they need no login."], templates: ["Templates", "Reusable tasks with their checklist"], settings: ["Settings", "Your account, lists and data"], accounts: ["Accounts", "Everyone who has signed up. You see names only, never their tasks."], more: ["More", ""] };
+  const titles = { today: [greeting(), ""], tasks: ["Tasks", `${T.filter(needsAction).length} open · ${T.filter(t => flag(t) === "Overdue").length} overdue`], calendar: ["Calendar", "Due dates by day"], reports: ["Reports", "How the team is delivering"], team: ["Team", "The people you give tasks to. Names only; they need no login."], templates: ["Templates", "Reusable tasks with their checklist"], settings: ["Settings", "Your account, lists and data"], accounts: ["Accounts", "Everyone who has signed up. You see names only, never their tasks."], more: ["More", ""] };
   $("#ptitle").textContent = titles[v][0]; $("#psub").textContent = titles[v][1];
   const ae = document.activeElement, keep = ae && ae.id === "q2" ? ae.selectionStart : null;
   $("#page").innerHTML = { today: viewToday, tasks: viewTasks, calendar: viewCalendar, reports: viewReports, team: viewTeam, templates: viewTemplates, settings: viewSettings, accounts: viewAccounts, more: viewMore }[v]();
@@ -277,7 +278,7 @@ function render() {
 }
 const nowText = () => { const d = new Date(); return `${d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · ${hm(String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"))}`; };
 /* Keep the clock, greeting and time-based countdowns current. */
-setInterval(() => { if (!me || document.hidden) return; if (view() === "today") { $("#psub").textContent = nowText(); $("#ptitle").textContent = greeting(); } }, 10000);
+setInterval(() => { if (!me || document.hidden) return; if (view() === "today") { $("#ptitle").textContent = greeting(); const c = heroClock(); if ($("#hclock")) { $("#hclock").textContent = c.t; $("#hdate").textContent = c.d; } } }, 10000);
 let lastMin = -1; setInterval(() => { const m = nowMin(); if (m === lastMin || !me || document.hidden) return; lastMin = m; const busy = document.body.classList.contains("p-open") || $("#modal").classList.contains("open") || (document.activeElement && document.activeElement.matches && document.activeElement.matches("#page input, #page textarea, #page select")); if (!busy && tasks.some(t => isOpen(t) && t.due_time && left(t) === 0)) render(); }, 15000);
 const greeting = () => { const h = new Date().getHours(), n = (me.full_name || "").split(" ")[0]; return `${h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"}${n ? ", " + n : ""}`; };
 function showLogin() {
@@ -335,7 +336,7 @@ function viewToday() {
   const k = [["Open", O.length, "", { view: "open" }], ["Overdue", T.filter(t => flag(t) === "Overdue").length, "red", { flag: "Overdue" }], ["Due in 10 days", T.filter(t => flag(t) === "Due soon").length, "amber", { flag: "Due soon" }],
     ["To validate", T.filter(awaiting).length, "orange", { flag: "Awaiting validation" }], [`No update ${STALE_DAYS}+ days`, O.filter(isStale).length, "orange", { flag: "stale" }], ["Closed this week", T.filter(closed7).length, "green", { flag: "closed7", view: "closed" }]];
   viewToday.k = k;
-  h += `<div class="kpis">${k.map((x, i) => `<button class="kpi ${x[2]}" data-act="kpi" data-i="${i}"><b>${x[1]}</b><span>${esc(x[0])}</span></button>`).join("")}</div>`;
+  h += heroPanel(T, k);
   const sec = (title, arr, icn) => arr.length ? `<h4>${ic(icn)} ${title} <span class="sub">${arr.length}</span></h4>` + arr.slice(0, 6).map(t => `<a href="#today" data-open="${t.id}"><span><b style="font-weight:500">${esc(t.title)}</b></span>${countdown(t)}<span class="sub">#${t.no}${t.person_id ? " · " + esc(pName(t.person_id)) : ""}${blockedT(t) ? " · blocked by #" + blockedT(t).no : ""}</span></a>`).join("") + (arr.length > 6 ? `<a href="#tasks" data-pf="${title === "Overdue" ? "Overdue" : ""}" class="sub">+ ${arr.length - 6} more</a>` : "") : "";
   const sortU = a => a.sort((x, y) => urgency(x) - urgency(y));
   const att = sec("Overdue", sortU(T.filter(t => flag(t) === "Overdue")), "flag") + sec("Due in the next 3 days", sortU(O.filter(t => left(t) !== null && left(t) >= 0 && left(t) <= 3 && flag(t) !== "Overdue")), "cal") + sec("Drop requests to confirm", T.filter(dropReq), "flag") + sec("Awaiting your validation", T.filter(awaiting), "check") + sec("Blocked", O.filter(blockedT), "lock") + sec("Urgent, no due date", O.filter(t => urgentT(t) && !t.due_date), "flag");
@@ -347,6 +348,35 @@ function viewToday() {
   const ids = new Set(T.map(t => t.id)), A = activity.filter(a => ids.has(a.task_id)).slice(0, 10);
   h += `<div class="card act"><h2>Recent activity</h2>${A.map(a => { const t = tById(a.task_id), other = byOther(a); return `<a href="#today" data-open="${t.id}" class="${other ? "other" : ""}">${av(a.author_name || "?", 1)}<span class="body"><b>#${t.no} ${esc(t.title)}</b><div>${esc(a.body)}</div><span class="tiny">${esc(a.author_name || "")} · ${ago(a.created_at)}</span></span></a>`; }).join("") || `<span class="sub">Changes and updates will show here.</span>`}</div></div></div>`;
   return h;
+}
+
+/* Today hero: a charger-style load bar with one block per open task, most urgent first. */
+const segKind = t => flag(t) === "Overdue" ? "od" : awaiting(t) ? "aw" : flag(t) === "Due soon" ? "soon" : flag(t) === "On track" ? "ok" : "nd";
+const SEG_ORDER = ["od", "soon", "aw", "ok", "nd"];
+function heroClock() { const d = new Date(); return { t: hm(String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")), d: d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) }; }
+function heroPanel(T, k) {
+  const NA = T.filter(needsAction), cnt = Object.fromEntries(SEG_ORDER.map(x => [x, 0]));
+  NA.forEach(t => cnt[segKind(t)]++);
+  const N = NA.length, MAX = 48;
+  let blocks = [];
+  if (N <= MAX) SEG_ORDER.forEach(x => { for (let i = 0; i < cnt[x]; i++) blocks.push(x); });
+  else {
+    const raw = SEG_ORDER.map(x => ({ x, v: cnt[x] * MAX / N })), base = raw.map(r => ({ ...r, n: cnt[r.x] ? Math.max(1, Math.floor(r.v)) : 0 }));
+    let left2 = MAX - base.reduce((a, r) => a + r.n, 0);
+    [...base].sort((a, b) => (b.v - Math.floor(b.v)) - (a.v - Math.floor(a.v))).forEach(r => { if (left2 > 0 && cnt[r.x]) { r.n++; left2--; } });
+    base.forEach(r => { for (let i = 0; i < r.n; i++) blocks.push(r.x); });
+  }
+  const parts = [cnt.od && `${cnt.od} overdue`, cnt.aw && `${cnt.aw} waiting for your validation`, cnt.soon && `${cnt.soon} due in the next ${SOON_DAYS} days`].filter(Boolean);
+  const sum = !N ? "Nothing open. Add a task to get started." : parts.length ? parts.join(", ").replace(/, ([^,]*)$/, " and $1") + "." : "Everything open is on track.";
+  const label = `${N} open: ${cnt.od} overdue, ${cnt.soon} due soon, ${cnt.aw} to validate, ${cnt.ok} on track, ${cnt.nd} without a due date`;
+  const sw = { 1: "od", 2: "soon", 3: "aw" }, c = heroClock();
+  return `<section class="hero">
+    <div class="hl"><div class="hclock" id="hclock">${esc(c.t)}</div><div class="hdate" id="hdate">${esc(c.d)}</div><p class="hsum">${esc(sum)}</p></div>
+    <div class="hr">
+      <div class="chg${N ? "" : " empty"}" role="img" aria-label="${esc(label)}">${(N ? blocks : Array(24).fill("x")).map(x => `<i class="s-${x}"></i>`).join("")}</div>
+      <p class="chgcap">${N ? `One block per open task, most urgent first.${N > MAX ? ` Scaled to ${MAX} blocks.` : ""} Green is on track, grey has no due date.` : "No open tasks."}</p>
+      <div class="reads">${k.map((x, i) => `<button class="read ${x[2]}" data-act="kpi" data-i="${i}"><b>${x[1]}</b><span>${sw[i] ? `<i class="sw s-${sw[i]}"></i>` : ""}${esc(x[0])}</span></button>`).join("")}</div>
+    </div></section>`;
 }
 
 /* =========================================================== Tasks */
@@ -384,14 +414,14 @@ const shortDate = s => { const d = new Date(s); return `${d.getDate()} ${MON[d.g
 function taskRow(t) {
   const ago2 = t.updated_on ? days(t.updated_on, TODAY()) : null, c = cl(t), cd = c.filter(x => x.done).length, b = blockedT(t);
   const who = mine(t) ? (t.person_id ? `<span class="who">${av(pName(t.person_id), 1)}${esc(pName(t.person_id))}</span>` : `<span class="who sub">Unassigned</span>`) : `<span class="chip c-blue">Shared with you</span>`;
-  return `<div class="trow${needsAction(t) ? "" : " closed"}${flag(t) === "Overdue" ? " od" : ""}${selected.has(t.id) ? " sel" : ""}${openUpd.has(t.id) ? " xo" : ""}" data-id="${t.id}">
+  return `<div class="trow${needsAction(t) ? "" : " closed"}${flag(t) === "Overdue" ? " od" : ""}${selected.has(t.id) ? " sel" : ""}${openUpd.has(t.id) ? " xo" : ""}" data-u="${needsAction(t) ? segKind(t) : "done"}" data-id="${t.id}">
     <span class="ckc">${true ? `<input type="checkbox" data-sel="${t.id}" aria-label="Select task ${t.no}"${selected.has(t.id) ? " checked" : ""}>` : ""}</span>
     <span class="no">#${t.no}</span>
     <div class="mn"><div class="tt">${urgentT(t) ? `<span class="flag-urgent">${ic("flag")} Urgent</span> ` : ""}${esc(t.title)}</div>
       <div class="meta">${who}${t.category ? `<span class="tag">${esc(t.category)}</span>` : ""}${c.length ? `<button type="button" class="clchip${openCl.has(t.id) ? " on" : ""}" data-clrow="${t.id}" title="Show checklist">${ic("check")} ${cd}/${c.length}</button>` : ""}${dropReq(t) ? `<span class="chip c-over">Drop requested</span>` : ""}${(() => { const s = subInfo(t); return s ? `<span class="chip c-blue" title="Subtasks done">${ic("tasks")} ${s.done}/${s.total} subtasks</span>` : ""; })()}${mine(t) && cl(t).some(x => x.share) ? `<span class="tag" title="Checklist items shared with: ${esc([...new Set(cl(t).filter(x => x.share).map(x => pName(x.person_id)))].join(", "))}">${ic("team")} shared items</span>` : ""}${t.parent_id ? `<span class="sub" title="Subtask">&#8627; part of #${parentOf(t) ? parentOf(t).no + (parentOf(t).owner_id !== t.owner_id ? " (shared with you)" : "") : "?"}</span>` : ""}${mine(t) && t.person_id && personOf(t) && personOf(t).shared ? (t.assignee_can_see === false ? `<span class="tag" title="Hidden from ${esc(pName(t.person_id))}">${ic("lock")} hidden</span>` : !canArr(t).length ? `<span class="tag">view only</span>` : !sameSet(canArr(t), DEF_CAN) ? `<span class="tag" title="${esc(pName(t.person_id))} may change: ${esc(rightsText(canArr(t)))}">custom rights</span>` : "") : ""}${!mine(t) && isMember(t) ? `<span class="chip c-blue">checklist item for you</span>` : !mine(t) && !canArr(t).length ? `<span class="tag">view only</span>` : ""}${t.recurrence ? `<span title="Repeats">${ic("repeat")} ${esc(REPEAT.find(r => r[0] === t.recurrence)[1])}</span>` : ""}${b ? `<span class="chip c-blue">${ic("lock")} Blocked by #${b.no}</span>` : ""}${t.waiting_on ? `<span>Waiting on: ${esc(t.waiting_on)}</span>` : ""}${missing(t) ? `<span class="miss" title="Fill these in so the task can be tracked">Missing: ${missingList(t).join(", ")}</span>` : ""}</div>
       ${openCl.has(t.id) && c.length ? `<div class="rowcl">${c.map((x, i) => `<label class="chk"><input type="checkbox" data-rcl="${t.id}:${i}"${x.done ? " checked" : ""}${can(t, "checklist") || myItem(t, x) ? "" : " disabled"}> <span${x.done ? ' class="dn"' : ""}>${esc(x.text)}</span>${itemWho(x) ? ` <span class="tag">${esc(itemWho(x))}</span>` : ""}</label>`).join("")}${can(t, "checklist") && cd < c.length ? `<button type="button" class="linkb" data-rclall="${t.id}">Tick all</button>` : ""}</div>` : ""}
       ${updBlock(t)}</div>
-    <span class="stc"><select data-qs="${t.id}" aria-label="Status"${can(t, "status") ? "" : " disabled title=\"You cannot change the status\""}>${statOpts(t).map(s => `<option${s === t.status ? " selected" : ""}>${s}</option>`).join("")}</select>${awaiting(t) && mine(t) ? ` <button class="btn sm brand" data-val="${t.id}">Validate &amp; close</button>` : ""}</span>
+    <span class="stc"><select data-qs="${t.id}" data-st="${esc(t.status || "")}" aria-label="Status"${can(t, "status") ? "" : " disabled title=\"You cannot change the status\""}>${statOpts(t).map(s => `<option${s === t.status ? " selected" : ""}>${s}</option>`).join("")}</select>${awaiting(t) && mine(t) ? ` <button class="btn sm brand" data-val="${t.id}">Validate &amp; close</button>` : ""}</span>
     <span class="due">${t.due_date ? `<span>${esc(dueText(t))}</span>` : ""}${countdown(t)}</span>
     <span class="ago${isStale(t) ? " stale" : ""}">${ago2 === null ? "Never" : ago2 === 0 ? "Today" : ago2 + "d ago"}</span></div>`;
 }
@@ -455,11 +485,11 @@ function boardCols(R) {
 }
 function viewBoard(R) {
   const cols = boardCols(R);
-  const card = t => `<div class="bcard${flag(t) === "Overdue" ? " od" : ""}" draggable="${can(t, "status") || mine(t)}" data-bid="${t.id}" data-open="${t.id}" tabindex="0">
+  const card = t => `<div class="bcard${flag(t) === "Overdue" ? " od" : ""}" data-u="${needsAction(t) ? segKind(t) : "done"}" draggable="${can(t, "status") || mine(t)}" data-bid="${t.id}" data-open="${t.id}" tabindex="0">
     <div class="bt">${urgentT(t) ? `<span class="flag-urgent">${ic("flag")}</span> ` : ""}<span class="no">#${t.no}</span> ${esc(t.title)}</div>
     <div class="bm">${LAY.board === "status" && t.person_id && mine(t) ? `<span class="who">${av(pName(t.person_id), 1)}${esc(pName(t.person_id))}</span>` : ""}${!mine(t) ? `<span class="chip c-blue">Shared</span>` : ""}${(() => { const s = subInfo(t); return s ? `<span class="tag">${s.done}/${s.total} sub</span>` : ""; })()}${cl(t).length ? `<span class="tag">${ic("check")} ${cl(t).filter(x => x.done).length}/${cl(t).length}</span>` : ""}</div>
     <div class="bd">${t.due_date ? `<span class="sub">${esc(dueText(t))}</span>` : ""}${countdown(t)}</div></div>`;
-  return `<div class="board">${cols.map(c => `<div class="bcol" data-col="${c.key}"><div class="bh">${c.av ? av(c.label, 1) : `<i class="dot" style="background:${SCOL[c.label] || (c.label === "Awaiting validation" ? "var(--orange)" : "var(--faint)")}"></i>`}<b>${esc(c.label)}</b><span class="sub">${c.items.length}</span></div><div class="bl">${c.items.map(card).join("") || `<div class="bempty">Drop tasks here</div>`}</div></div>`).join("")}</div>
+  return `<div class="board">${cols.map(c => `<div class="bcol" data-col="${c.key}"><div class="bh">${c.av ? av(c.label, 1) : `<i class="dot" style="background:${SCOL[c.label] || (c.label === "Awaiting validation" ? "var(--s-aw)" : "var(--faint)")}"></i>`}<b>${esc(c.label)}</b><span class="sub">${c.items.length}</span></div><div class="bl">${c.items.map(card).join("") || `<div class="bempty">Drop tasks here</div>`}</div></div>`).join("")}</div>
   <p class="tiny" style="margin-top:8px">${R.length} shown · drag a card to another column to ${LAY.board === "person" ? "reassign it" : "change its status"} · tap a card to open it</p>`;
 }
 async function boardDrop(id, col) {
