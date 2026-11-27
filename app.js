@@ -140,12 +140,16 @@ const extraTeamsKey = () => `tt_teams_${me && me.id}`;
 const extraTeams = () => { try { return JSON.parse(localStorage.getItem(extraTeamsKey()) || "[]"); } catch (e) { return []; } };
 const setExtraTeams = a => { try { localStorage.setItem(extraTeamsKey(), JSON.stringify(a)); } catch (e) {} };
 const allTeams = () => [...new Set([...team().flatMap(pTeams), ...extraTeams()])].sort((a, b) => a.localeCompare(b));
-const dismissKey = () => `tt_sugg_hidden_${me && me.id}`;
+const dismissKey = () => `tt_sugg_noteclosed_${me && me.id}`;
 const dismissed = () => { try { return new Set(JSON.parse(localStorage.getItem(dismissKey()) || "[]")); } catch (e) { return new Set(); } };
 function suggestions() {
   const T = team(), em = new Set(T.map(p => (p.email || "").toLowerCase()).filter(Boolean)), nm = new Set(T.map(p => p.name.trim().toLowerCase())), hid = dismissed();
-  return sugg.filter(a => a.email && !em.has(a.email.toLowerCase()) && !nm.has((a.full_name || "").trim().toLowerCase()) && !hid.has(a.id));
+  return sugg.filter(a => a.email && !em.has(a.email.toLowerCase()) && !nm.has((a.full_name || "").trim().toLowerCase()));
 }
+/* new colleagues show as notifications; closing one keeps them under Colleagues on the Team page */
+const noteSugg = () => { const hid = dismissed(); return suggestions().filter(a => !hid.has(a.id)); };
+const sgName = a => (a.full_name || a.email.split("@")[0]).trim();
+const sgRow = (a, inPop) => `<div class="sgi">${av(sgName(a), 1)}<div class="grow"><b>${esc(sgName(a))}</b><div class="sub">${inPop ? "Joined the tracker · " : ""}${esc(a.email)}</div></div><button class="btn sm pri" data-sgadd="${a.id}">Add</button>${inPop ? `<button class="btn sm ghost icon sgx" data-sghide="${a.id}" title="Close. They stay under Colleagues on the Team page." aria-label="Close notification">${ic("x")}</button>` : ""}</div>`;
 const pName = id => (people.find(p => p.id === id) || {}).name || "";
 const tById = id => tasks.find(t => t.id === id);
 const mine = t => t.owner_id === me.id;
@@ -268,7 +272,7 @@ function renderShell() {
   $("#menm").textContent = nm; $("#meem").textContent = me.email; $("#meem").title = me.email;
   const mini = $(".shell").classList.contains("mini"), sb = $(".sbtn");
   sb.innerHTML = ic(mini ? "chevr" : "chevl"); sb.title = sb.ariaLabel = mini ? "Expand sidebar" : "Collapse sidebar";
-  const n = attention() + newOthers().length;
+  const n = attention() + newOthers().length + noteSugg().length;
   $$("[data-badge]").forEach(b => { b.hidden = !n; b.textContent = n > 99 ? "99+" : n; });
   $$('[data-act="bell"]').forEach(b => b.innerHTML = ic("bell"));
   $("#add").innerHTML = `${ic("plus")} New task`; $("#fab").innerHTML = ic("plus");
@@ -332,7 +336,8 @@ function bellPop() {
   if (aw.length) h += row("check", pl(aw.length, "task") + " awaiting your validation", "Check the work, then press Validate & close", 'data-pf="Awaiting validation"');
   if (bl.length) h += row("lock", pl(bl.length, "task") + " blocked", "Waiting for another task to finish", 'data-pf="blocked"');
   if (no.length) h += `<h4>New from others</h4>` + no.slice(0, 6).map(a => { const t = tById(a.task_id); return `<a href="#today" data-open="${t.id}">${av(a.author_name, 1)}<span><b>#${t.no} ${esc(t.title)}</b><br><span class="sub">${esc(a.author_name)}: ${esc(a.body)} · ${ago(a.created_at)}</span></span></a>`; }).join("");
-  if (!od.length && !td.length && !aw.length && !bl.length && !no.length) h += `<div class="empty">All clear. Nothing needs you right now.</div>`;
+  const ns = noteSugg(); if (ns.length) h += `<h4>New colleagues</h4><div class="sglist pops">${ns.slice(0, 6).map(a => sgRow(a, true)).join("")}</div>${ns.length > 6 ? `<a href="#team" data-gocol="1"><span class="sub">See all ${ns.length} under Colleagues</span></a>` : ""}`;
+  if (!od.length && !td.length && !aw.length && !bl.length && !no.length && !ns.length) h += `<div class="empty">All clear. Nothing needs you right now.</div>`;
   return h + `</div>`;
 }
 function toggleBell(btn) {
@@ -581,17 +586,17 @@ function viewTeam() {
     <div class="row" style="margin-top:12px"><button class="btn pri" data-act="savep">Add</button><button class="btn" data-act="cancelp" hidden>Cancel</button><span class="grow"></span><button class="btn danger" data-act="delp" hidden>Remove</button></div>
     <div class="confirm" id="pcf"><span>Remove this person? Their tasks stay, marked Unassigned.</span><button class="btn danger sm" data-act="delpyes">Remove</button><button class="btn sm" data-act="delpno">Keep</button></div></div>`;
   const S = suggestions();
-  if (S.length) h += `<div class="card sugg" style="margin-bottom:16px"><h2>Colleagues with an account <span class="sub">${S.length}</span></h2><p class="sub" style="margin:-6px 0 10px">They signed up to this tracker with your company email. Add the ones you work with${teamSel ? ` (they go into ${esc(teamSel)})` : ""}.</p>
-    <div class="sglist">${S.map(a => `<div class="sgi">${av(a.full_name || a.email, 1)}<div class="grow"><b>${esc(a.full_name || a.email.split("@")[0])}</b><div class="sub">${esc(a.email)}</div></div><button class="btn sm pri" data-sgadd="${a.id}">Add</button><button class="btn sm ghost" data-sghide="${a.id}">Not now</button></div>`).join("")}</div></div>`;
+  const colleagues = () => S.length ? `<div class="card sugg" id="colleagues" style="margin-top:16px"><h2>Colleagues <span class="sub">${S.length} not on your team</span></h2><p class="sub" style="margin:-6px 0 10px">People who signed up to this tracker with your company email. Add the ones you work with${teamSel ? ` (they go into ${esc(teamSel)})` : ""}. Adding is optional.</p>
+    <div class="sglist">${S.map(a => sgRow(a, false)).join("")}</div></div>` : "";
   h += `<div class="toolbar teambar"><div class="seg tseg">${[["", `All <span>${team().length}</span>`], ...TT.map(x => [x, `${esc(x)} <span>${team().filter(p => pTeams(p).includes(x)).length}</span>`])].map(([k, l]) => `<button class="${teamSel === k ? "on" : ""}" data-teamsel="${esc(k)}">${l}</button>`).join("")}</div>
     ${newTeamOpen ? `<span class="row" style="gap:6px"><input id="nt-name" placeholder="New team name" style="width:200px;min-height:36px"><button class="btn sm pri" data-act="ntsave">Create</button><button class="btn sm" data-act="ntcancel">Cancel</button></span>` : `<button class="btn" data-act="ntopen">${ic("plus")} New team</button>`}
     ${teamSel ? `<button class="btn ghost" data-act="ntdel">Delete team</button>` : ""}<span class="grow"></span>${laySeg("team", [["cards", "Cards", "team"], ["list", "List", "list"]])}</div>
     <div class="confirm" id="ntcf"><span>Delete the team "${esc(teamSel)}"? People stay on your list; only the team label is removed.</span><button class="btn danger sm" data-act="ntdelyes">Delete team</button><button class="btn sm" data-act="ntdelno">Keep</button></div>`;
-  if (LAY.team === "list") return h + (T.length ? `<div class="card" style="padding:6px 14px"><div class="tw"><table class="t"><thead><tr><th>Name</th><th>Email</th><th>Sign-in</th><th class="n">Open</th><th class="n">Overdue</th><th class="n">To validate</th><th class="n">Hidden from them</th><th></th></tr></thead><tbody>${T.map(p => { const P = tasks.filter(t => mine(t) && t.person_id === p.id), o = P.filter(isOpen), od = o.filter(t => flag(t) === "Overdue").length; return `<tr><td><span class="row" style="gap:8px;flex-wrap:nowrap">${av(p.name, 1)}<b>${esc(p.name)}</b></span></td><td class="sub">${esc(p.email || "")}</td><td>${p.shared ? `<span class="chip c-blue">On</span>` : `<span class="sub">Off</span>`}</td><td class="n">${o.length}</td><td class="n${od ? " hot" : ""}">${od}</td><td class="n">${P.filter(awaiting).length}</td><td class="n">${P.filter(t => t.assignee_can_see === false).length}</td><td style="white-space:nowrap;text-align:right"><button class="btn sm" data-pf-person="${p.id}">Tasks</button> ${o.length ? `<button class="btn sm" data-mailp="${p.id}" aria-label="Email tasks">${ic("mail")}</button> ` : ""}<button class="btn sm ghost" data-editp="${p.id}">Edit</button></td></tr>`; }).join("")}</tbody></table></div></div>` : `<div class="empty">${teamSel ? `Nobody in ${esc(teamSel)} yet. Add someone above, or edit a person and tick ${esc(teamSel)}.` : "No team members yet. Add the first one above."}</div>`);
+  if (LAY.team === "list") return h + colleagues() + (T.length ? `<div class="card" style="padding:6px 14px"><div class="tw"><table class="t"><thead><tr><th>Name</th><th>Email</th><th>Sign-in</th><th class="n">Open</th><th class="n">Overdue</th><th class="n">To validate</th><th class="n">Hidden from them</th><th></th></tr></thead><tbody>${T.map(p => { const P = tasks.filter(t => mine(t) && t.person_id === p.id), o = P.filter(isOpen), od = o.filter(t => flag(t) === "Overdue").length; return `<tr><td><span class="row" style="gap:8px;flex-wrap:nowrap">${av(p.name, 1)}<b>${esc(p.name)}</b></span></td><td class="sub">${esc(p.email || "")}</td><td>${p.shared ? `<span class="chip c-blue">On</span>` : `<span class="sub">Off</span>`}</td><td class="n">${o.length}</td><td class="n${od ? " hot" : ""}">${od}</td><td class="n">${P.filter(awaiting).length}</td><td class="n">${P.filter(t => t.assignee_can_see === false).length}</td><td style="white-space:nowrap;text-align:right"><button class="btn sm" data-pf-person="${p.id}">Tasks</button> ${o.length ? `<button class="btn sm" data-mailp="${p.id}" aria-label="Email tasks">${ic("mail")}</button> ` : ""}<button class="btn sm ghost" data-editp="${p.id}">Edit</button></td></tr>`; }).join("")}</tbody></table></div></div>` : `<div class="empty">${teamSel ? `Nobody in ${esc(teamSel)} yet. Add someone above, or edit a person and tick ${esc(teamSel)}.` : "No team members yet. Add the first one above."}</div>`);
   h += `<div class="pgrid">${T.map(p => { const P = tasks.filter(t => mine(t) && t.person_id === p.id); const o = P.filter(isOpen); return `<div class="pcard"><div class="hd">${av(p.name)}<div class="grow"><b>${esc(p.name)}</b><div class="sub">${esc(p.email || "No email saved")}</div></div>${p.shared ? `<span class="chip c-blue">Can see own tasks</span>` : ""}</div>${pTeams(p).length ? `<div class="row" style="gap:5px">${pTeams(p).map(x => `<span class="tag">${esc(x)}</span>`).join("")}</div>` : ""}
     <div class="pstats"><div><b>${o.length}</b><span>Open</span></div><div><b class="${o.some(t => flag(t) === "Overdue") ? "hot" : ""}">${o.filter(t => flag(t) === "Overdue").length}</b><span>Overdue</span></div><div><b>${P.filter(awaiting).length}</b><span>To validate</span></div></div>
     <div class="row"><button class="btn sm" data-pf-person="${p.id}">View tasks</button>${o.length || P.filter(awaiting).length ? `<button class="btn sm" data-mailp="${p.id}">${ic("mail")} Email tasks</button>` : ""}<span class="grow"></span><button class="btn sm ghost" data-editp="${p.id}">Edit</button></div></div>`; }).join("") || `<div class="empty">${teamSel ? `Nobody in ${esc(teamSel)} yet. Add someone above, or edit a person and tick ${esc(teamSel)}.` : "No team members yet. Add the first one above."}</div>`}</div>`;
-  return h;
+  return h + colleagues();
 }
 let editP = null;
 function fillPersonForm(p) {
@@ -1544,8 +1549,9 @@ document.addEventListener("click", async e => {
   const ep = cl0("[data-editp]"); if (ep) { fillPersonForm(people.find(p => String(p.id) === ep.dataset.editp)); return; }
   const ts = cl0("[data-teamsel]"); if (ts) { teamSel = ts.dataset.teamsel; render(); return; }
   const sa = cl0("[data-sgadd]"); if (sa) { const a = sugg.find(x => x.id === sa.dataset.sgadd); if (!a) return; sa.disabled = true; const row = { name: (a.full_name || a.email.split("@")[0]).trim(), email: a.email.toLowerCase(), shared: false }; if (teamSel) row.teams = [teamSel];
-    api.addPerson(row).then(async () => { toast(`${row.name} added`); await reload(); }).catch(err => { sa.disabled = false; toast(/duplicate/i.test(err.message || "") ? "That name is already on your team" : errMsg(err)); }); return; }
-  const sh2 = cl0("[data-sghide]"); if (sh2) { const h = dismissed(); h.add(sh2.dataset.sghide); try { localStorage.setItem(dismissKey(), JSON.stringify([...h])); } catch (e) {} render(); toast("Hidden. They will not be suggested again."); return; }
+    api.addPerson(row).then(async () => { toast(`${row.name} added`); await reload(); if ($("#pop").innerHTML) $("#pop").innerHTML = bellPop(); }).catch(err => { sa.disabled = false; toast(/duplicate/i.test(err.message || "") ? "That name is already on your team" : errMsg(err)); }); return; }
+  const sh2 = cl0("[data-sghide]"); if (sh2) { const h = dismissed(); h.add(sh2.dataset.sghide); try { localStorage.setItem(dismissKey(), JSON.stringify([...h])); } catch (e) {} renderShell(); if ($("#pop").innerHTML) $("#pop").innerHTML = bellPop(); toast("Moved to Colleagues on the Team page"); return; }
+  const gc = cl0("[data-gocol]"); if (gc) { e.preventDefault(); $("#pop").innerHTML = ""; location.hash = "team"; render(); setTimeout(() => { const c = $("#colleagues"); if (c) c.scrollIntoView({ behavior: "smooth" }); }, 50); return; }
   const mp = cl0("[data-mailp]"); if (mp) { const pid = +mp.dataset.mailp; openMail(tasks.filter(t => mine(t) && t.person_id === pid && needsAction(t))); return; }
   const dc = cl0("[data-delcat]"); if (dc) { try { await api.deleteCategory(+dc.dataset.delcat); await reload(); } catch (err) { toast(errMsg(err)); } return; }
   const ut = cl0("[data-usetpl]"); if (ut) { const t = templates.find(x => String(x.id) === ut.dataset.usetpl); openTask(null, { title: t.title, category: t.category, priority: t.priority, recurrence: t.recurrence, checklist: t.checklist || [] }); return; }
