@@ -796,6 +796,59 @@ input:focus,select:focus,textarea:focus{border-color:var(--brand)!important;box-
 :root[data-mode=dark] .side .nav a.on{background:rgba(255,255,255,.1)!important;box-shadow:none!important}
 :root[data-mode=dark] .trow select[data-st="Not Started"]{background-color:rgba(255,255,255,.08)!important}
 @media(max-width:860px){.mtop,.tabbar{background:linear-gradient(140deg,rgba(255,255,255,.55),rgba(255,255,255,.28))!important;-webkit-backdrop-filter:blur(22px) saturate(185%)!important;backdrop-filter:blur(22px) saturate(185%)!important}}
+
+/* phone: figures as separate glass tiles, no grid lines */
+@media(max-width:860px){
+  .kpis{gap:10px!important;background:none!important;border:0!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;overflow:visible!important}
+  .kpi,.kpi:nth-child(n){border:1px solid rgba(255,255,255,.7)!important;border-radius:16px!important;
+    background:linear-gradient(140deg,rgba(255,255,255,.55),rgba(255,255,255,.28))!important;-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 12px 28px -20px rgba(20,50,42,.4)!important}
+  :root[data-mode=dark] .kpi,:root[data-mode=dark] .kpi:nth-child(n){border-color:rgba(255,255,255,.1)!important;background:linear-gradient(140deg,rgba(255,255,255,.08),rgba(255,255,255,.03))!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.1)!important}
+}
+
+/* v37: one Dynolt scene per tab behind the glass, and clearer glass */
+body{--pg3d:var(--iso-charger);--pg3d2:var(--iso-chart)}
+body[data-page=tasks]{--pg3d:var(--iso-board);--pg3d2:var(--iso-charger)}
+body[data-page=calendar]{--pg3d:var(--iso-calendar);--pg3d2:var(--iso-chart)}
+body[data-page=reports]{--pg3d:var(--iso-chart);--pg3d2:var(--iso-battery)}
+body[data-page=team]{--pg3d:var(--iso-battery);--pg3d2:var(--iso-board)}
+body[data-page=templates],body[data-page=settings],body[data-page=accounts],body[data-page=more]{--pg3d:var(--iso-charger);--pg3d2:var(--iso-calendar)}
+.hero::before{display:none!important}
+body::before,body::after{display:block!important;content:"";position:fixed;z-index:-1;pointer-events:none;transform:none!important;filter:none!important;border-radius:0!important;
+  background-color:transparent!important;background-repeat:no-repeat!important;background-size:contain!important;background-position:center!important;opacity:1!important}
+body::before{width:560px;height:520px;top:70px;right:-10px;left:auto;bottom:auto;background-image:var(--pg3d)!important}
+body::after{width:440px;height:380px;bottom:-10px;left:250px;right:auto;top:auto;background-image:var(--pg3d2)!important}
+.shell.mini~*{}
+:root[data-mode=dark] body::before,:root[data-mode=dark] body::after{opacity:.5!important}
+@media(max-width:860px){body::before{width:330px;height:300px;top:90px;right:-60px}body::after{width:280px;height:240px;bottom:80px;left:-50px}}
+body:has(#login:not([hidden]))::before,body:has(#login:not([hidden]))::after{display:none!important}
+/* clearer glass: lower fill, lighter frost, crisp light edges */
+.card,.kpis,.pcard,.bcol,.filters,.tlist,.cal,.hero,.side,.top{
+  background:linear-gradient(140deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.10) 55%,rgba(255,255,255,.20) 100%)!important;
+  -webkit-backdrop-filter:blur(9px) saturate(170%)!important;backdrop-filter:blur(9px) saturate(170%)!important}
+.lcard{background:linear-gradient(140deg,rgba(255,255,255,.40) 0%,rgba(255,255,255,.14) 60%,rgba(255,255,255,.24) 100%)!important;-webkit-backdrop-filter:blur(8px) saturate(170%)!important;backdrop-filter:blur(8px) saturate(170%)!important}
+.read{background:rgba(255,255,255,.18)!important}
+.bcard{background:rgba(255,255,255,.45)!important}
+input,select,textarea{background:rgba(255,255,255,.45)!important}
+@media(max-width:860px){.kpi,.kpi:nth-child(n){background:linear-gradient(140deg,rgba(255,255,255,.36),rgba(255,255,255,.12))!important;-webkit-backdrop-filter:blur(9px) saturate(170%)!important;backdrop-filter:blur(9px) saturate(170%)!important}
+  .mtop,.tabbar{background:linear-gradient(140deg,rgba(255,255,255,.4),rgba(255,255,255,.16))!important;-webkit-backdrop-filter:blur(10px) saturate(170%)!important;backdrop-filter:blur(10px) saturate(170%)!important}}
+:root[data-mode=dark] .card,:root[data-mode=dark] .kpis,:root[data-mode=dark] .pcard,:root[data-mode=dark] .bcol,:root[data-mode=dark] .filters,:root[data-mode=dark] .tlist,:root[data-mode=dark] .cal,:root[data-mode=dark] .hero,:root[data-mode=dark] .side,:root[data-mode=dark] .top{
+  background:linear-gradient(140deg,rgba(255,255,255,.07) 0%,rgba(20,24,23,.35) 60%,rgba(255,255,255,.05) 100%)!important}
+
+body::before,body::after{opacity:.8!important}
+:root[data-mode=dark] body::before,:root[data-mode=dark] body::after{opacity:.45!important}
+
+/* teams and colleague suggestions */
+.teamchk{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin-top:4px}
+.teamchk input#p-newteam{flex:1 1 200px;min-width:180px;width:auto}
+.teamchk .chk{font-weight:500;color:var(--ink2)}
+.sglist{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:8px}
+.sgi{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.7)}
+:root[data-mode=dark] .sgi{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1)}
+.sgi .sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.teambar{flex-wrap:wrap}
+.tseg{flex-wrap:wrap;max-width:100%}
+@media(max-width:860px){.sglist{grid-template-columns:1fr}.teambar .seg.lay{margin-left:auto}}
 </style>
 </head>
 <body>
